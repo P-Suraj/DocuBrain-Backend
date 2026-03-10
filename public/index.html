@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>DocuBrain 🧠</title>
+    <style>
+        :root {
+            --bg: #0f172a;
+            --card: #1e293b;
+            --text: #e2e8f0;
+            --accent: #3b82f6;
+        }
+        body {
+            font-family: 'Inter', system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            margin: 0;
+            display: flex;
+            justify-content: center;
+            height: 100vh;
+        }
+        .container {
+            width: 100%;
+            max-width: 800px;
+            padding: 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+        h1 { margin: 0; font-size: 2rem; background: linear-gradient(90deg, #60a5fa, #a78bfa); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+        
+        /* Upload Section */
+        .upload-box {
+            background: var(--card);
+            padding: 2rem;
+            border-radius: 12px;
+            border: 2px dashed #475569;
+            text-align: center;
+            transition: all 0.3s;
+        }
+        .upload-box:hover { border-color: var(--accent); }
+        
+        /* Chat Area */
+        .chat-box {
+            flex-grow: 1;
+            background: var(--card);
+            border-radius: 12px;
+            padding: 1rem;
+            overflow-y: auto;
+            display: flex;
+            flex-direction: column;
+            gap: 1rem;
+            border: 1px solid #334155;
+        }
+        .message {
+            padding: 0.8rem 1.2rem;
+            border-radius: 8px;
+            max-width: 80%;
+            line-height: 1.5;
+        }
+        .user { align-self: flex-end; background: var(--accent); color: white; }
+        .bot { align-self: flex-start; background: #334155; border-left: 3px solid #60a5fa; }
+        .source { font-size: 0.8rem; opacity: 0.7; margin-top: 5px; display: block; }
+
+        /* Input Area */
+        .input-group { display: flex; gap: 0.5rem; }
+        input[type="text"] {
+            flex-grow: 1;
+            padding: 1rem;
+            border-radius: 8px;
+            border: 1px solid #475569;
+            background: #020617;
+            color: white;
+            outline: none;
+        }
+        button {
+            padding: 0 1.5rem;
+            border-radius: 8px;
+            border: none;
+            background: var(--accent);
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h1>DocuBrain 🧠</h1>
+        <span id="status" style="font-size: 0.9rem; color: #4ade80;">System Ready</span>
+    </div>
+
+    <div class="upload-box" id="dropZone">
+        <p>📂 Drag & Drop PDF here or Click to Upload</p>
+        <input type="file" id="fileInput" accept="application/pdf" style="display: none;">
+    </div>
+
+    <div class="chat-box" id="chatBox">
+        <div class="message bot">
+            Hello Suraj! Upload a document to give me a brain, then ask me anything.
+        </div>
+    </div>
+
+    <div class="input-group">
+        <input type="text" id="userInput" placeholder="Ask about your document..." />
+        <button id="sendBtn">Send</button>
+    </div>
+</div>
+
+<script>
+    const API_URL = 'http://localhost:5000';
+
+    // 1. Handle File Upload
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+
+    dropZone.onclick = () => fileInput.click();
+    fileInput.onchange = uploadFile;
+
+    async function uploadFile() {
+        const file = fileInput.files[0];
+        if (!file) return;
+
+        const formData = new FormData();
+        formData.append('pdfFile', file);
+
+        document.getElementById('status').innerText = "⏳ Ingesting Knowledge...";
+        dropZone.style.opacity = "0.5";
+
+        try {
+            const res = await fetch(`${API_URL}/upload`, { method: 'POST', body: formData });
+            const data = await res.json();
+            
+            if (res.ok) {
+                document.getElementById('status').innerText = "✅ Knowledge Base Updated";
+                addMessage('bot', `I've read "${file.name}". I created ${data.totalChunks || 6} memory fragments. Ready to answer!`);
+            } else {
+                throw new Error(data.message);
+            }
+        } catch (err) {
+            alert("Upload Failed: " + err.message);
+            document.getElementById('status').innerText = "❌ Error";
+        } finally {
+            dropZone.style.opacity = "1";
+        }
+    }
+
+    // 2. Handle Chat
+    const userInput = document.getElementById('userInput');
+    const sendBtn = document.getElementById('sendBtn');
+    const chatBox = document.getElementById('chatBox');
+
+    sendBtn.onclick = sendMessage;
+    userInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') sendMessage();
+    });
+
+    async function sendMessage() {
+        const text = userInput.value.trim();
+        if (!text) return;
+
+        addMessage('user', text);
+        userInput.value = '';
+        const loadingId = addMessage('bot', 'Thinking...');
+
+        try {
+            const res = await fetch(`${API_URL}/chat`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ query: text })
+            });
+            const data = await res.json();
+            
+            // Remove loading message
+            document.getElementById(loadingId).remove();
+            
+            // Show Answer
+            addMessage('bot', data.answer);
+
+        } catch (err) {
+            document.getElementById(loadingId).innerText = "Error: " + err.message;
+        }
+    }
+
+    function addMessage(sender, text) {
+        const div = document.createElement('div');
+        div.className = `message ${sender}`;
+        div.id = Date.now();
+        div.innerText = text;
+        chatBox.appendChild(div);
+        chatBox.scrollTop = chatBox.scrollHeight;
+        return div.id;
+    }
+</script>
+
+</body>
+</html>
